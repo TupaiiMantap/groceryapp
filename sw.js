@@ -1,4 +1,4 @@
-const CACHE_NAME = 'grocerysafe-v1.0.0';
+const CACHE_NAME = 'grocerysafe-v1.1.0';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -33,6 +33,15 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   // Only handle GET requests
   if (event.request.method !== 'GET') return;
+
+  // Let Firebase / Google API calls pass directly to network without interception
+  if (
+    event.request.url.includes('firestore.googleapis.com') ||
+    event.request.url.includes('firebaseio.com') ||
+    event.request.url.includes('identitytoolkit')
+  ) {
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {

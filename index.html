@@ -73,10 +73,15 @@
             <i data-lucide="shopping-bag" class="w-4 h-4"></i>
           </div>
           <div>
-            <h1 class="text-sm font-extrabold tracking-tight text-white flex items-center gap-1.5 leading-none">
-              GrocerySafe <span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-full font-bold">PRO</span>
-            </h1>
-            <p class="text-[10px] text-slate-400 font-medium">Teman Belanja Hemat Anak Kos</p>
+            <div class="flex items-center gap-1.5">
+              <h1 class="text-sm font-extrabold tracking-tight text-white leading-none">GrocerySafe</h1>
+              <span class="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-full font-bold">PRO</span>
+            </div>
+            <!-- Firebase Cloud Sync Status Badge -->
+            <div id="cloud-sync-pill" class="flex items-center gap-1.5 mt-0.5" title="Status Sinkronisasi Firebase Cloud">
+              <span id="cloud-sync-dot" class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              <span id="cloud-sync-label" class="text-[9px] font-semibold text-emerald-400">Firebase Cloud</span>
+            </div>
           </div>
         </div>
 
@@ -690,6 +695,10 @@
     </div>
 
   </div>
+
+  <!-- Firebase SDK (Compat v10 for Vanilla PWA & Offline Support) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
   <!-- JavaScript Entry Point -->
   <script src="./app.js"></script>

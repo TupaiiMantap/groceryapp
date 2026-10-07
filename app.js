@@ -290,6 +290,244 @@ function formatDateIndo(timestamp) {
 }
 
 // ==========================================
+// 4.5. FIREBASE INTEGRATION & REALTIME CLOUD SYNC
+// ==========================================
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBS7_CTSFuh8VWypwaJdjMoYogDFd6R9MI",
+  authDomain: "groceryapp-f2201.firebaseapp.com",
+  projectId: "groceryapp-f2201",
+  storageBucket: "groceryapp-f2201.firebasestorage.app",
+  messagingSenderId: "1036185409893",
+  appId: "1:1036185409893:web:a9b36e78e420fed382698c"
+};
+
+class FirebaseSyncService {
+  constructor() {
+    this.db = null;
+    this.sessionDocRef = null;
+    this.store = null;
+    this.debounceTimer = null;
+    this.isApplyingCloudUpdate = false;
+    this.status = 'initializing';
+  }
+
+  init(store) {
+    this.store = store;
+
+    // Check if Firebase Compat SDK is present
+    if (typeof firebase === 'undefined') {
+      console.warn('[Firebase] SDK is not loaded. Operating in Offline LocalStorage mode.');
+      this.updateStatus('offline', 'Mode Lokal (Offline)');
+      return;
+    }
+
+    try {
+      // Initialize Firebase App
+      const app = firebase.apps.length ? firebase.app() : firebase.initializeApp(FIREBASE_CONFIG);
+      this.db = firebase.firestore(app);
+
+      // Enable offline IndexedDb persistence if supported
+      try {
+        this.db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+          if (err.code === 'failed-precondition') {
+            console.info('[Firebase] Persistence enabled in another tab.');
+          } else if (err.code === 'unimplemented') {
+            console.info('[Firebase] Persistence not supported by current browser.');
+          }
+        });
+      } catch (e) {
+        // Ignored
+      }
+
+      // Target document for active session sync
+      this.sessionDocRef = this.db.collection('grocery_sessions').doc('active_trip');
+
+      this.updateStatus('connecting', 'Menghubungkan Cloud...');
+
+      // Listen to online / offline events
+      window.addEventListener('online', () => {
+        this.updateStatus('connecting', 'Online, Menyinkronkan...');
+        this.syncNow();
+      });
+      window.addEventListener('offline', () => {
+        this.updateStatus('offline', 'Offline (Tersimpan Lokal)');
+      });
+
+      // Attach click on status pill to force sync
+      const syncPill = document.getElementById('cloud-sync-pill');
+      if (syncPill) {
+        syncPill.style.cursor = 'pointer';
+        syncPill.addEventListener('click', () => {
+          feedback.tap();
+          this.syncNow();
+        });
+      }
+
+      // Start Realtime Firestore Listener
+      this.listenToCloud();
+
+    } catch (err) {
+      console.error('[Firebase] Initialization error:', err);
+      this.updateStatus('error', 'Error Firebase');
+    }
+  }
+
+  listenToCloud() {
+    if (!this.sessionDocRef) return;
+
+    this.sessionDocRef.onSnapshot(
+      { includeMetadataChanges: true },
+      (snapshot) => {
+        if (this.isApplyingCloudUpdate) return;
+
+        if (snapshot.exists) {
+          const cloudData = snapshot.data();
+          const fromCache = snapshot.metadata.fromCache;
+          const hasPendingWrites = snapshot.metadata.hasPendingWrites;
+
+          this.applyCloudData(cloudData);
+
+          if (hasPendingWrites) {
+            this.updateStatus('syncing', 'Menyimpan ke Cloud...');
+          } else if (fromCache) {
+            this.updateStatus('synced', 'Tersinkron (Cache)');
+          } else {
+            this.updateStatus('synced', 'Tersinkron Cloud');
+          }
+        } else {
+          // Document does not exist yet on cloud, seed with current local state
+          this.syncNow();
+        }
+      },
+      (error) => {
+        console.warn('[Firebase] Firestore snapshot listener notice:', error.code, error.message);
+        if (error.code === 'permission-denied') {
+          this.updateStatus('offline', 'DB Perlu Rules Firestore');
+        } else {
+          this.updateStatus('offline', 'Mode Offline');
+        }
+      }
+    );
+  }
+
+  applyCloudData(data) {
+    if (!data || !this.store) return;
+    this.isApplyingCloudUpdate = true;
+
+    try {
+      let stateChanged = false;
+
+      // Sync Cart
+      if (Array.isArray(data.cart)) {
+        if (JSON.stringify(this.store.cart) !== JSON.stringify(data.cart)) {
+          this.store.cart = data.cart;
+          stateChanged = true;
+        }
+      }
+
+      // Sync Budget Limit
+      if (typeof data.budgetLimit === 'number' && this.store.budgetLimit !== data.budgetLimit) {
+        this.store.budgetLimit = data.budgetLimit;
+        stateChanged = true;
+      }
+
+      // Sync Price Lookup (merge to keep all past references)
+      if (data.priceLookup && typeof data.priceLookup === 'object') {
+        const mergedLookup = { ...this.store.priceLookup, ...data.priceLookup };
+        if (JSON.stringify(this.store.priceLookup) !== JSON.stringify(mergedLookup)) {
+          this.store.priceLookup = mergedLookup;
+          stateChanged = true;
+        }
+      }
+
+      // Sync History
+      if (Array.isArray(data.history)) {
+        if (JSON.stringify(this.store.history) !== JSON.stringify(data.history)) {
+          this.store.history = data.history;
+          stateChanged = true;
+        }
+      }
+
+      if (stateChanged) {
+        this.store.saveState();
+        // Notify UI subscribers without triggering cloud write loop
+        this.store.listeners.forEach(fn => fn(this.store));
+      }
+    } finally {
+      this.isApplyingCloudUpdate = false;
+    }
+  }
+
+  triggerDebouncedSync() {
+    if (this.isApplyingCloudUpdate || !this.sessionDocRef) return;
+
+    this.updateStatus('syncing', 'Menyimpan...');
+
+    clearTimeout(this.debounceTimer);
+    this.debounceTimer = setTimeout(() => {
+      this.syncNow();
+    }, 600); // 600ms debounce
+  }
+
+  async syncNow() {
+    if (!this.sessionDocRef || !this.store) return;
+
+    try {
+      const payload = {
+        cart: this.store.cart,
+        budgetLimit: this.store.budgetLimit,
+        priceLookup: this.store.priceLookup,
+        history: this.store.history,
+        updatedAt: Date.now()
+      };
+
+      await this.sessionDocRef.set(payload, { merge: true });
+      this.updateStatus('synced', 'Tersinkron Cloud');
+    } catch (err) {
+      console.warn('[Firebase] Save error (handled gracefully):', err.code || err);
+      if (err.code === 'permission-denied') {
+        this.updateStatus('offline', 'DB Perlu Rules');
+      } else {
+        this.updateStatus('offline', 'Tersimpan Lokal');
+      }
+    }
+  }
+
+  updateStatus(status, label) {
+    this.status = status;
+    const dot = document.getElementById('cloud-sync-dot');
+    const text = document.getElementById('cloud-sync-label');
+    if (!dot || !text) return;
+
+    text.textContent = label;
+
+    dot.className = 'w-1.5 h-1.5 rounded-full';
+    text.className = 'text-[9px] font-semibold';
+
+    switch (status) {
+      case 'synced':
+        dot.className += ' bg-emerald-400';
+        text.className += ' text-emerald-400';
+        break;
+      case 'syncing':
+      case 'connecting':
+        dot.className += ' bg-amber-400 animate-pulse';
+        text.className += ' text-amber-300';
+        break;
+      case 'error':
+        dot.className += ' bg-rose-400';
+        text.className += ' text-rose-400';
+        break;
+      case 'offline':
+      default:
+        dot.className += ' bg-slate-400';
+        text.className += ' text-slate-400';
+        break;
+    }
+  }
+}
+
+// ==========================================
 // 5. APPLICATION STATE STORE
 // ==========================================
 class GroceryStore {
@@ -367,8 +605,11 @@ class GroceryStore {
     };
   }
 
-  notify() {
+  notify(syncCloud = true) {
     this.saveState();
+    if (syncCloud && window.firebaseSync) {
+      window.firebaseSync.triggerDebouncedSync();
+    }
     this.listeners.forEach(fn => fn(this));
   }
 
@@ -1616,5 +1857,7 @@ class GroceryApp {
 
 // Instantiate on DOM load
 window.addEventListener('DOMContentLoaded', () => {
+  window.firebaseSync = new FirebaseSyncService();
   window.app = new GroceryApp();
+  window.firebaseSync.init(store);
 });
