@@ -7,6 +7,7 @@
 // 1. DATA MODELS & CONSTANTS
 // ==========================================
 const STORAGE_KEYS = {
+  ACTIVE_USER: 'grocery_safe_active_user_v1',
   CART: 'grocery_safe_cart_v1',
   HISTORY: 'grocery_safe_history_v1',
   PRICE_LOOKUP: 'grocery_safe_lookup_v1',
@@ -348,8 +349,8 @@ class FirebaseSyncService {
         // Ignored
       }
 
-      // Target document for active session sync
-      this.sessionDocRef = this.db.collection('grocery_sessions').doc('active_trip');
+      // Target document for active session sync - Scoped to logged-in user to prevent multi-user collisions
+      this.setupUserDoc();
 
       this.updateStatus('connecting', 'Menghubungkan Cloud...');
 
@@ -379,6 +380,20 @@ class FirebaseSyncService {
       console.error('[Firebase] Initialization error:', err);
       this.updateStatus('error', 'Error Firebase');
     }
+  }
+
+  setupUserDoc() {
+    if (!this.db) return;
+    const user = (this.store && this.store.currentUser && this.store.currentUser.username)
+      ? this.store.currentUser.username.toLowerCase().trim()
+      : 'rian';
+    this.sessionDocRef = this.db.collection('grocery_users').doc(user).collection('sessions').doc('active_trip');
+  }
+
+  reconnectForUser() {
+    if (!this.db) return;
+    this.setupUserDoc();
+    this.listenToCloud();
   }
 
   listenToCloud() {
@@ -541,6 +556,7 @@ class FirebaseSyncService {
 // ==========================================
 class GroceryStore {
   constructor() {
+    this.currentUser = JSON.parse(localStorage.getItem(STORAGE_KEYS.ACTIVE_USER) || 'null');
     this.cart = [];
     this.history = [];
     this.priceLookup = {};
@@ -550,14 +566,53 @@ class GroceryStore {
     this.selectedCategory = 'all';
     this.listeners = [];
 
+    if (this.currentUser) {
+      this.loadState();
+    }
+  }
+
+  getKey(key) {
+    const user = (this.currentUser && this.currentUser.username)
+      ? this.currentUser.username.toLowerCase().trim()
+      : 'rian';
+    return `grocery_safe_${user}_${key}_v1`;
+  }
+
+  login(username, pin = '1234') {
+    const cleanUser = String(username || 'rian').toLowerCase().trim();
+    const displayName = cleanUser === 'rian' ? 'Rian (Anak Kos)' : cleanUser.charAt(0).toUpperCase() + cleanUser.slice(1);
+    
+    this.currentUser = {
+      username: cleanUser,
+      name: displayName,
+      pin: pin || '1234',
+      loginAt: Date.now()
+    };
+    localStorage.setItem(STORAGE_KEYS.ACTIVE_USER, JSON.stringify(this.currentUser));
     this.loadState();
+    if (window.firebaseSync) {
+      window.firebaseSync.reconnectForUser();
+    }
+    this.notify(true);
+    return this.currentUser;
+  }
+
+  logout() {
+    localStorage.removeItem(STORAGE_KEYS.ACTIVE_USER);
+    this.currentUser = null;
+    this.cart = [];
+    this.history = [];
+    this.priceLookup = {};
+    this.notify(false);
   }
 
   loadState() {
+    if (!this.currentUser) return;
     try {
-      const isInit = localStorage.getItem(STORAGE_KEYS.INITIALIZED);
+      const initKey = this.getKey('init');
+      const isInit = localStorage.getItem(initKey);
       if (!isInit) {
-        // First run: seed mock items & lookup
+        // First run for this specific user: seed default items & lookup
         this.cart = JSON.parse(JSON.stringify(MOCK_ITEMS));
         this.history = [
           {
@@ -579,16 +634,16 @@ class GroceryStore {
         this.priceLookup = JSON.parse(JSON.stringify(MOCK_LOOKUP));
         this.budgetLimit = 350000;
         this.saveState();
-        localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
+        localStorage.setItem(initKey, 'true');
         return;
       }
 
-      this.cart = JSON.parse(localStorage.getItem(STORAGE_KEYS.CART) || '[]');
-      this.history = JSON.parse(localStorage.getItem(STORAGE_KEYS.HISTORY) || '[]');
-      this.priceLookup = JSON.parse(localStorage.getItem(STORAGE_KEYS.PRICE_LOOKUP) || '{}');
-      this.budgetLimit = parseInt(localStorage.getItem(STORAGE_KEYS.BUDGET) || '350000', 10);
+      this.cart = JSON.parse(localStorage.getItem(this.getKey('cart')) || '[]');
+      this.history = JSON.parse(localStorage.getItem(this.getKey('history')) || '[]');
+      this.priceLookup = JSON.parse(localStorage.getItem(this.getKey('lookup')) || '{}');
+      this.budgetLimit = parseInt(localStorage.getItem(this.getKey('budget')) || '350000', 10);
     } catch (e) {
-      console.error('Error loading state from localStorage:', e);
+      console.error('Error loading user state from localStorage:', e);
       this.cart = JSON.parse(JSON.stringify(MOCK_ITEMS));
       this.history = [];
       this.priceLookup = JSON.parse(JSON.stringify(MOCK_LOOKUP));
@@ -597,13 +652,14 @@ class GroceryStore {
   }
 
   saveState() {
+    if (!this.currentUser) return;
     try {
-      localStorage.setItem(STORAGE_KEYS.CART, JSON.stringify(this.cart));
-      localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(this.history));
-      localStorage.setItem(STORAGE_KEYS.PRICE_LOOKUP, JSON.stringify(this.priceLookup));
-      localStorage.setItem(STORAGE_KEYS.BUDGET, this.budgetLimit.toString());
+      localStorage.setItem(this.getKey('cart'), JSON.stringify(this.cart));
+      localStorage.setItem(this.getKey('history'), JSON.stringify(this.history));
+      localStorage.setItem(this.getKey('lookup'), JSON.stringify(this.priceLookup));
+      localStorage.setItem(this.getKey('budget'), this.budgetLimit.toString());
     } catch (e) {
-      console.error('Error saving state:', e);
+      console.error('Error saving user state:', e);
     }
   }
 
@@ -828,14 +884,27 @@ class GroceryApp {
 
     // Subscribe UI to store state changes
     store.subscribe(() => {
-      this.render();
+      if (store.currentUser) {
+        this.render();
+      }
     });
 
-    // Initial render
-    this.render();
+    // Initial auth & render check
+    this.updateAuthView();
   }
 
   initElements() {
+    // Auth & Single-User Lock Elements
+    this.viewLoginScreen = document.getElementById('view-login-screen');
+    this.formLogin = document.getElementById('form-login');
+    this.inputLoginUsername = document.getElementById('login-username');
+    this.inputLoginPin = document.getElementById('login-pin');
+    this.btnQuickLoginRian = document.getElementById('btn-quick-login-rian');
+    this.headerUserName = document.getElementById('header-user-name');
+    this.tabAccountUser = document.getElementById('tab-account-user');
+    this.btnLogout = document.getElementById('btn-logout');
+    this.btnTabLogout = document.getElementById('btn-tab-logout');
+
     // Navigation tabs
     this.navBelanja = document.getElementById('nav-belanja');
     this.navRiwayat = document.getElementById('nav-riwayat');
@@ -1089,7 +1158,7 @@ class GroceryApp {
       this.switchTab('riwayat');
     });
 
-    // Format currency inputs on blur / input
+    // Currency input formatting on blur
     this.inputItemPrice.addEventListener('blur', (e) => {
       const val = parseRupiahInput(e.target.value);
       if (val > 0) e.target.value = formatRupiahNumber(val);
@@ -1102,6 +1171,47 @@ class GroceryApp {
       const val = parseRupiahInput(e.target.value);
       if (val > 0) e.target.value = formatRupiahNumber(val);
     });
+
+    // ==========================================
+    // AUTHENTICATION & SINGLE-USER LOCK LISTENERS
+    // ==========================================
+    this.formLogin?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const u = this.inputLoginUsername?.value.trim() || 'rian';
+      const p = this.inputLoginPin?.value.trim() || '1234';
+      feedback.success();
+      store.login(u, p);
+      this.updateAuthView();
+    });
+
+    this.btnQuickLoginRian?.addEventListener('click', () => {
+      feedback.success();
+      store.login('rian', '1234');
+      this.updateAuthView();
+    });
+
+    const handleLogout = () => {
+      feedback.tap();
+      if (confirm('Kunci sesi belanja dan keluar akun? Data belanja Anda tetap aman tersimpan.')) {
+        store.logout();
+        this.updateAuthView();
+      }
+    };
+
+    this.btnLogout?.addEventListener('click', handleLogout);
+    this.btnTabLogout?.addEventListener('click', handleLogout);
+  }
+
+  updateAuthView() {
+    if (!store.currentUser) {
+      this.viewLoginScreen?.classList.remove('hidden');
+    } else {
+      this.viewLoginScreen?.classList.add('hidden');
+      if (this.headerUserName) this.headerUserName.textContent = store.currentUser.username;
+      if (this.tabAccountUser) this.tabAccountUser.textContent = store.currentUser.name;
+      this.render();
+    }
+    if (window.lucide) window.lucide.createIcons();
   }
 
   // ==========================================
