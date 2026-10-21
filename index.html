@@ -40,7 +40,7 @@
     }
   </script>
 </head>
-<body class="bg-[#070b14] text-slate-100 min-h-screen flex items-center justify-center p-0 sm:p-4 overflow-x-hidden">
+<body class="bg-[#070b14] text-slate-100 h-[100dvh] w-screen flex items-center justify-center p-0 sm:p-4 overflow-hidden">
 
   <!-- Ambient Desktop Glow Background (Hidden on mobile) -->
   <div class="fixed inset-0 pointer-events-none hidden sm:block overflow-hidden">
@@ -58,8 +58,8 @@
     </div>
   </div>
 
-  <!-- Mobile Frame (Max width 430px, Centered) -->
-  <div class="w-full sm:max-w-[430px] h-[100dvh] max-h-[100dvh] flex flex-col bg-[#0B1120] sm:rounded-[36px] sm:border sm:border-slate-800/80 mobile-shell-shadow relative overflow-hidden">
+  <!-- Mobile Frame (Fills 100% of phone screen on mobile without blank gaps) -->
+  <div class="w-full sm:max-w-[430px] h-[100dvh] sm:h-[92dvh] sm:max-h-[880px] flex flex-col bg-[#0B1120] sm:rounded-[36px] sm:border sm:border-slate-800/80 mobile-shell-shadow relative overflow-hidden">
 
     <!-- ======================================================== -->
     <!-- VIEW: LOGIN SCREEN (Private Single-User Authentication) -->
@@ -248,9 +248,9 @@
     </header>
 
     <!-- ======================================================== -->
-    <!-- MAIN SCROLLABLE CONTENT VIEWPORT -->
+    <!-- MAIN SCROLLABLE CONTENT VIEWPORT (Safe-area bottom padding) -->
     <!-- ======================================================== -->
-    <main class="flex-1 overflow-y-auto no-scrollbar relative p-4 pb-24">
+    <main class="flex-1 overflow-y-auto no-scrollbar relative p-3.5 pb-[calc(env(safe-area-inset-bottom,0px)+8rem)]">
 
       <!-- ======================================================== -->
       <!-- TAB 1: BELANJA (Active Cart & Shopping Workflow) -->
@@ -292,20 +292,15 @@
           </div>
         </div>
 
-        <!-- DT2 Test Scenarios Quick Runner (Studi Kasus Rian) -->
-        <div class="p-3 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-950 to-emerald-950/40 border border-emerald-500/30 flex items-center justify-between gap-2 shadow-md">
-          <div class="flex items-center gap-2.5">
-            <div class="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center text-sm font-bold shadow-inner">
-              ⚡
-            </div>
-            <div>
-              <span class="text-xs font-bold text-white block">Skenario Uji DT2 Rian</span>
-              <span class="text-[10px] text-slate-400">Verifikasi 4 Kasus Nyata Guru</span>
-            </div>
-          </div>
-          <button id="btn-load-dt2-scenarios" type="button" class="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-[11px] tap-effect shadow-md shadow-emerald-500/20 flex items-center gap-1">
-            <i data-lucide="play" class="w-3 h-3 fill-current"></i>
-            Muat Data Uji
+        <!-- Compact Slim Test Runner Pill [Ramping, tidak mengganggu list belanja] -->
+        <div class="flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-900/60 border border-slate-800 text-[11px]">
+          <span class="text-slate-400 flex items-center gap-1.5 font-medium text-[11px]">
+            <span class="text-amber-400 font-bold">⚡</span>
+            <span>Uji DT2 Kasus Rian</span>
+          </span>
+          <button id="btn-load-dt2-scenarios" type="button" class="text-emerald-400 font-bold hover:text-emerald-300 flex items-center gap-1 tap-effect text-[11px] py-0.5 px-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+            <span>Muat Data Uji</span>
+            <i data-lucide="chevron-right" class="w-3 h-3"></i>
           </button>
         </div>
 
@@ -495,23 +490,22 @@
     </main>
 
     <!-- ======================================================== -->
-    <!-- FLOATING ACTION BUTTON (FAB): TAMBAH BARANG [F-01] -->
-    <!-- Ergonomic One-Handed Thumb Reach (Bottom Right) -->
+    <!-- CIRCULAR QUICK FAB: TAMBAH BARANG [Tanda Plus Efektif & Thumb-Friendly] -->
     <!-- ======================================================== -->
     <button 
       id="floating-add-btn" 
       type="button" 
-      class="absolute right-4 bottom-20 z-40 touch-target h-14 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 font-black text-sm shadow-xl shadow-emerald-500/40 flex items-center gap-2 tap-effect active:scale-95 transition-transform"
-      title="Tambah Barang Baru"
+      class="absolute right-4 bottom-[calc(env(safe-area-inset-bottom,0px)+4.75rem)] z-40 w-14 h-14 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 font-black shadow-xl shadow-emerald-500/40 flex items-center justify-center tap-effect active:scale-90 transition-all border border-emerald-300/40"
+      title="Tambah Barang Baru (+)"
+      aria-label="Tambah Barang"
     >
-      <i data-lucide="plus-circle" class="w-6 h-6 text-slate-950"></i>
-      <span class="tracking-wide">Tambah Barang</span>
+      <i data-lucide="plus" class="w-8 h-8 stroke-[3] text-slate-950"></i>
     </button>
 
     <!-- ======================================================== -->
-    <!-- FLOATING BOTTOM NAVIGATION BAR (Thumb Ergonomics) -->
+    <!-- FLOATING BOTTOM NAVIGATION BAR (Thumb Ergonomics & Safe-Area) -->
     <!-- ======================================================== -->
-    <nav class="absolute bottom-0 left-0 right-0 z-30 px-3 pb-3 pt-2 bg-gradient-to-t from-[#0B1120] via-[#0B1120]/95 to-transparent">
+    <nav class="absolute bottom-0 left-0 right-0 z-30 px-3 pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] bg-gradient-to-t from-[#0B1120] via-[#0B1120]/95 to-transparent">
       <div class="glass-nav rounded-2xl p-1 flex items-center justify-around">
         
         <!-- Tab 1: Belanja -->
