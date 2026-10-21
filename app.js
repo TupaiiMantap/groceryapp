@@ -64,10 +64,19 @@ const MOCK_ITEMS = [
 
 const MOCK_LOOKUP = {
   'beras pulen super 5kg': { price: 68000, unit: 'pack', category: 'sembako' },
+  'beras': { price: 68000, unit: 'pack', category: 'sembako' },
   'minyak goreng sawit 2l': { price: 42000, unit: 'liter', category: 'sembako' },
+  'minyak goreng': { price: 42000, unit: 'liter', category: 'sembako' },
   'sabun mandi cair refill 450ml': { price: 24000, unit: 'pack', category: 'kebersihan' },
+  'sabun mandi': { price: 20000, unit: 'pcs', category: 'kebersihan' },
+  'sabun': { price: 20000, unit: 'pcs', category: 'kebersihan' },
+  'wajan': { price: 100000, unit: 'pcs', category: 'peralatan' },
+  'wajan anti lengket': { price: 100000, unit: 'pcs', category: 'peralatan' },
   'mie instan goreng (dus)': { price: 115000, unit: 'pack', category: 'makanan' },
-  'telur ayam 1kg': { price: 28000, unit: 'kg', category: 'sembako' },
+  'telur ayam 1kg': { price: 32000, unit: 'kg', category: 'sembako' },
+  'telur': { price: 32000, unit: 'kg', category: 'sembako' },
+  'garam dapur': { price: 5000, unit: 'pcs', category: 'sembako' },
+  'garam': { price: 5000, unit: 'pcs', category: 'sembako' },
   'deterjen bubuk 800g': { price: 195000, unit: 'pack', category: 'kebersihan' },
   'kecap manis 550ml': { price: 21000, unit: 'botol', category: 'sembako' },
   'susu uht full cream 1l': { price: 18500, unit: 'liter', category: 'makanan' }
@@ -633,10 +642,14 @@ class GroceryStore {
     const remainingBudget = this.budgetLimit - totalSpent;
     const budgetUsagePercent = this.budgetLimit > 0 ? (totalSpent / this.budgetLimit) * 100 : 100;
 
-    let budgetStatus = 'safe'; // 'safe' (<80%), 'warning' (80-99%), 'danger' (>=100%)
-    if (budgetUsagePercent >= 100) {
+    // Sesuai SRS F-05 & Rubrik DT2 Skenario 4:
+    // Aman: < 90% (Hijau)
+    // Waspada: >= 90% s.d. <= 100% (Kuning)
+    // Bahaya / Overbudget: > 100% (Merah + Banner Waspada Tegas)
+    let budgetStatus = 'safe';
+    if (totalSpent > this.budgetLimit) {
       budgetStatus = 'danger';
-    } else if (budgetUsagePercent >= 80) {
+    } else if (budgetUsagePercent >= 90) {
       budgetStatus = 'warning';
     }
 
@@ -1020,6 +1033,21 @@ class GroceryApp {
       });
     });
 
+    // Quick Promo Discount Preset Chips [F-03]
+    document.querySelectorAll('.discount-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        feedback.tap();
+        this.inputItemDiscount.value = chip.dataset.discount || '';
+        this.updateModalCalculationPreview();
+      });
+    });
+
+    // Quick Runner: Muat Skenario Uji DT2 Kasus Rian
+    document.getElementById('btn-load-dt2-scenarios')?.addEventListener('click', () => {
+      feedback.success();
+      this.loadDT2TestScenarios();
+    });
+
     // Danger Modal Actions [F-05]
     this.btnDangerProceed.addEventListener('click', () => {
       feedback.tap();
@@ -1317,6 +1345,86 @@ class GroceryApp {
   }
 
   // ==========================================
+  // DT2 TEST SCENARIO PRELOADER (STUDI KASUS RIAN)
+  // ==========================================
+  loadDT2TestScenarios() {
+    this.overbudgetWarningSuppressed = false;
+    store.budgetLimit = 300000; // Limit Rp 300.000 untuk pengujian batas 90% & 100%
+    
+    store.cart = [
+      {
+        id: 'dt2-1',
+        name: 'Wajan Anti Lengket',
+        category: 'peralatan',
+        unit: 'pcs',
+        qty: 1,
+        unitPrice: 100000,
+        lastMonthPrice: null,
+        discountRaw: '50%+20%', // Skenario 1b: Diskon kompound 50%+20% -> Rp 40.000
+        createdAt: Date.now() - 50000
+      },
+      {
+        id: 'dt2-2',
+        name: 'Sabun Mandi Refill',
+        category: 'kebersihan',
+        unit: 'pcs',
+        qty: 1,
+        unitPrice: 20000,
+        lastMonthPrice: null,
+        discountRaw: '25%', // Skenario 1a: Diskon tunggal 25% -> Rp 15.000
+        createdAt: Date.now() - 40000
+      },
+      {
+        id: 'dt2-3',
+        name: 'Minyak Goreng 2L',
+        category: 'sembako',
+        unit: 'liter',
+        qty: 3, // Skenario 2: Qty 3 x Rp 43.000 -> Subtotal Rp 129.000
+        unitPrice: 43000,
+        lastMonthPrice: 42000,
+        discountRaw: '0',
+        createdAt: Date.now() - 30000
+      },
+      {
+        id: 'dt2-4',
+        name: 'Beras Pulen Super 5kg',
+        category: 'sembako',
+        unit: 'pack',
+        qty: 1,
+        unitPrice: 74000, // Skenario 3a: Harga naik dibanding bln lalu (Rp 68.000 -> Rp 74.000, ↑ +Rp 6.000)
+        lastMonthPrice: 68000,
+        discountRaw: '0',
+        createdAt: Date.now() - 20000
+      },
+      {
+        id: 'dt2-5',
+        name: 'Telur Ayam 1kg',
+        category: 'sembako',
+        unit: 'kg',
+        qty: 1,
+        unitPrice: 28000, // Skenario 3b: Harga turun dibanding bln lalu (Rp 32.000 -> Rp 28.000, ↓ -Rp 4.000)
+        lastMonthPrice: 32000,
+        discountRaw: '0',
+        createdAt: Date.now() - 10000
+      },
+      {
+        id: 'dt2-6',
+        name: 'Garam Dapur Halus',
+        category: 'sembako',
+        unit: 'pcs',
+        qty: 1,
+        unitPrice: 5000, // Skenario 3c: Harga stabil (Rp 5.000 -> Rp 5.000, = Harga Tetap Stabil)
+        lastMonthPrice: 5000,
+        discountRaw: '0',
+        createdAt: Date.now()
+      }
+    ];
+
+    store.notify();
+    alert('✅ Data Uji Coba DT2 Kasus Rian berhasil dimuat!\n\n1. Skenario 1: Diskon Tunggal 25% (Sabun) & Kompound 50%+20% (Wajan)\n2. Skenario 2: Kuantitas Minyak 3 x Rp 43.000 = Rp 129.000\n3. Skenario 3: Fluktuasi Naik (Beras), Turun (Telur), Stabil (Garam)\n4. Skenario 4: Total Rp 291.000 / Rp 300.000 (97% -> Waspada Kuning).\n\nTekan (+) pada Minyak Goreng atau Wajan untuk menguji Peringatan Bahaya Merah Overbudget!');
+  }
+
+  // ==========================================
   // CONFIRM DELETE MODAL
   // ==========================================
   openConfirmDeleteModal(item) {
@@ -1406,23 +1514,28 @@ class GroceryApp {
     this.headerContainer.classList.remove('animate-danger-pulse', 'border-rose-500/70', 'border-amber-500/50');
     this.headerProgressBar.classList.remove('bg-emerald-500', 'bg-amber-500', 'bg-rose-500');
 
+    const overbudgetTopBanner = document.getElementById('overbudget-top-banner');
+
     if (summary.budgetStatus === 'safe') {
-      // HIJAU (< 80%)
+      // HIJAU (< 90%)
       this.headerProgressBar.classList.add('bg-emerald-500');
       this.headerStatusBadge.className = 'text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1';
       this.headerStatusBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Aman`;
+      if (overbudgetTopBanner) overbudgetTopBanner.classList.add('hidden');
     } else if (summary.budgetStatus === 'warning') {
-      // KUNING / ORANYE (80% - 99%)
+      // KUNING WASPADA (>= 90% s.d 100%) [Skenario 4 DT2]
       this.headerProgressBar.classList.add('bg-amber-500');
       this.headerContainer.classList.add('border-amber-500/50');
-      this.headerStatusBadge.className = 'text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1 animate-soft-pulse';
+      this.headerStatusBadge.className = 'text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1 animate-soft-pulse';
       this.headerStatusBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span> Waspada (${Math.round(summary.rawPercentage)}%)`;
+      if (overbudgetTopBanner) overbudgetTopBanner.classList.add('hidden');
     } else {
-      // MERAH + DANGER PULSE (>= 100%)
+      // MERAH OVERBUDGET (> 100%) [Skenario 4 DT2]
       this.headerProgressBar.classList.add('bg-rose-500');
       this.headerContainer.classList.add('animate-danger-pulse', 'border-rose-500/70');
       this.headerStatusBadge.className = 'text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-500 text-white flex items-center gap-1';
       this.headerStatusBadge.innerHTML = `<i data-lucide="alert-triangle" class="w-3 h-3"></i> OVERBUDGET!`;
+      if (overbudgetTopBanner) overbudgetTopBanner.classList.remove('hidden');
     }
 
     // Total saved badge
@@ -1542,27 +1655,27 @@ class GroceryApp {
     if (item.lastMonthPrice !== null && item.lastMonthPrice !== undefined && item.lastMonthPrice > 0) {
       const diff = item.unitPrice - item.lastMonthPrice;
       if (diff > 0) {
-        // Red Arrow UP: Lebih Mahal
+        // Red Arrow UP: Lebih Mahal (Contoh DT2: Beras +Rp 6.000 Naik)
         priceComparatorBadge = `
           <span class="inline-flex items-center gap-0.5 text-[11px] font-bold px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/30">
             <i data-lucide="trending-up" class="w-3 h-3 text-rose-400"></i>
-            +${formatRupiah(diff)} (Naik)
+            &uarr; +${formatRupiah(diff)} (Naik)
           </span>
         `;
       } else if (diff < 0) {
-        // Green Arrow DOWN: Lebih Murah
+        // Green Arrow DOWN: Lebih Murah (Contoh DT2: Telur -Rp 4.000 Turun/Hemat)
         priceComparatorBadge = `
           <span class="inline-flex items-center gap-0.5 text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
             <i data-lucide="trending-down" class="w-3 h-3 text-emerald-400"></i>
-            -${formatRupiah(Math.abs(diff))} (Turun)
+            &darr; -${formatRupiah(Math.abs(diff))} (Hemat)
           </span>
         `;
       } else {
-        // Gray Equal Sign: Stabil / Sama
+        // Gray Equal Sign: Stabil / Tetap Sama (Contoh DT2: Garam Rp 5.000 Stabil)
         priceComparatorBadge = `
-          <span class="inline-flex items-center gap-0.5 text-[11px] font-medium px-2 py-0.5 rounded-md bg-slate-700/40 text-slate-300 border border-slate-600/40">
+          <span class="inline-flex items-center gap-0.5 text-[11px] font-medium px-2 py-0.5 rounded-md bg-slate-700/50 text-slate-300 border border-slate-600/50">
             <i data-lucide="equal" class="w-3 h-3 text-slate-400"></i>
-            Sama dgn bln lalu
+            = ${formatRupiah(item.unitPrice)} (Harga Tetap Stabil)
           </span>
         `;
       }
